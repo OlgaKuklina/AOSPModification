@@ -20,7 +20,7 @@ If the feature is turned on in Settings and if passed `MotionEvent` has the new 
 The `gesture_settings.xml` was modified to add new gesture: `gesture_double_tap_top_left_corner`.
 And the appropriate strings were added to the res/values/strings.xml file. The src/com/android/settings/gestures/GestureSettings.java was modified to support `screenshotEnabled` setting. And the appropriate checks were added into `TopLeftCornerPointerEventListener` and `ViewRootImpl`. With those changes Settings app menu will show one more switch settings in gestures menu. 
 
-### Don’t take screenshot when the device is locked or display the lock/PIN screen feature
+### Don’t take screenshot when the device is locked or displays the lock/PIN screen
 The feature support implemented in`TopLeftCornerPointerEventListener`. The appropriate check of `KeyguardManager` is added in `onDoubleTap()` method.  
 
 ### Vibration 
