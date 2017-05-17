@@ -1,0 +1,12 @@
+#ifndef __CLASSIFICATIONLIB_TLCCLASSIFIER_H
+#define __CLASSIFICATIONLIB_TLCCLASSIFIER_H
+
+#include <stdint.h>
+
+__BEGIN_DECLS
+
+int customToolType(float x, float y);
+
+__END_DECLS
+
+#endif /* __CLASSIFICATIONLIB_TLCCLASSIFIER_H */

@@ -1,0 +1,105 @@
+diff --git a/include/android/input.h b/include/android/input.h
+index f928c6e4f..127801c61 100644
+--- a/include/android/input.h
++++ b/include/android/input.h
+@@ -786,6 +786,8 @@ enum {
+     AMOTION_EVENT_TOOL_TYPE_MOUSE = 3,
+     /** eraser */
+     AMOTION_EVENT_TOOL_TYPE_ERASER = 4,
++    /** finger top-left corner */
++    AMOTION_EVENT_TOOL_TYPE_FINGER_TOP_LEFT_CORNER = 5,
+ };
+ 
+ /**
+diff --git a/include/classificationlib/tlcclassifier.h b/include/classificationlib/tlcclassifier.h
+new file mode 100644
+index 000000000..e3a98d688
+--- /dev/null
++++ b/include/classificationlib/tlcclassifier.h
+@@ -0,0 +1,12 @@
++#ifndef __CLASSIFICATIONLIB_TLCCLASSIFIER_H
++#define __CLASSIFICATIONLIB_TLCCLASSIFIER_H
++
++#include <stdint.h>
++
++__BEGIN_DECLS
++
++int customToolType(float x, float y);
++
++__END_DECLS
++
++#endif /* __CLASSIFICATIONLIB_TLCCLASSIFIER_H */
+\ No newline at end of file
+diff --git a/libs/classificationlib/Android.bp b/libs/classificationlib/Android.bp
+new file mode 100644
+index 000000000..b2ccc5ee4
+--- /dev/null
++++ b/libs/classificationlib/Android.bp
+@@ -0,0 +1,4 @@
++cc_library {
++    name: "classificationlib",
++    srcs: ["tlcclassifier.c"],
++}
+\ No newline at end of file
+diff --git a/libs/classificationlib/tlcclassifier.c b/libs/classificationlib/tlcclassifier.c
+new file mode 100644
+index 000000000..37832bee7
+--- /dev/null
++++ b/libs/classificationlib/tlcclassifier.c
+@@ -0,0 +1,10 @@
++
++#include <android/input.h>
++
++int customToolType(float x, float y) {
++    if(x <= 200.00 && y <= 200.00) {
++        return AMOTION_EVENT_TOOL_TYPE_FINGER_TOP_LEFT_CORNER;
++    } else {
++        return AMOTION_EVENT_TOOL_TYPE_FINGER;
++    }
++}
+\ No newline at end of file
+diff --git a/services/inputflinger/Android.bp b/services/inputflinger/Android.bp
+index 4fd98e2a7..c1b8c67af 100644
+--- a/services/inputflinger/Android.bp
++++ b/services/inputflinger/Android.bp
+@@ -11,7 +11,7 @@
+ // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ // See the License for the specific language governing permissions and
+ // limitations under the License.
+-
++ 
+ cc_library_shared {
+     name: "libinputflinger",
+ 
+@@ -34,6 +34,7 @@ cc_library_shared {
+         "libutils",
+         "libui",
+         "libhardware_legacy",
++        "classificationlib",
+     ],
+ 
+     cflags: [
+diff --git a/services/inputflinger/InputReader.cpp b/services/inputflinger/InputReader.cpp
+index c1e636512..c77a9512e 100644
+--- a/services/inputflinger/InputReader.cpp
++++ b/services/inputflinger/InputReader.cpp
+@@ -56,7 +56,7 @@
+ 
+ #include <input/Keyboard.h>
+ #include <input/VirtualKeyMap.h>
+-
++#include <classificationlib/tlcclassifier.h>
+ #define INDENT "  "
+ #define INDENT2 "    "
+ #define INDENT3 "      "
+@@ -4573,6 +4573,10 @@ void TouchInputMapper::dispatchTouches(nsecs_t when, uint32_t policyFlags) {
+                 // First pointer is going down.  Set down time.
+                 mDownTime = when;
+             }
++            for (uint32_t i = 0; i < mCurrentCookedState.cookedPointerData.pointerCount; i++) {
++                PointerCoords myPointerCoords = mCurrentCookedState.cookedPointerData.pointerCoords[i];
++                    mCurrentCookedState.cookedPointerData.pointerProperties[i].toolType = customToolType(myPointerCoords.getAxisValue(AMOTION_EVENT_AXIS_X), myPointerCoords.getAxisValue(AMOTION_EVENT_AXIS_Y));
++                }
+ 
+             dispatchMotion(when, policyFlags, mSource,
+                     AMOTION_EVENT_ACTION_POINTER_DOWN, 0, 0, metaState, buttonState, 0,

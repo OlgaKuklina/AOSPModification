@@ -1,0 +1,78 @@
+diff --git a/res/values/strings.xml b/res/values/strings.xml
+index e177112586..e456121b84 100644
+--- a/res/values/strings.xml
++++ b/res/values/strings.xml
+@@ -7809,6 +7809,12 @@
+ 
+     <!-- Summary text for double tap power for camera [CHAR LIMIT=160]-->
+     <string name="double_tap_power_for_camera_summary">To quickly open camera, press the power button twice. Works from any screen</string>
++    
++    <!-- Title text for double tap at the top left corner for screenshot  [CHAR LIMIT=60]-->
++    <string name="double_tap_to_make_screenshot">Make a screenshot</string>
++    
++    <!-- Summary text for double tap at the top left corner for screenshot [CHAR LIMIT=160]-->
++    <string name="double_tap_to_make_screenshot_summary">To quickly make screenshot, double tap at the top left corner. Works from any screen</string>
+ 
+     <!-- Title text for double twist for camera mode [CHAR LIMIT=60]-->
+     <string name="double_twist_for_camera_mode_title">Flip camera</string>
+diff --git a/res/xml/gesture_settings.xml b/res/xml/gesture_settings.xml
+index 89549166c7..52c2b64aed 100644
+--- a/res/xml/gesture_settings.xml
++++ b/res/xml/gesture_settings.xml
+@@ -32,7 +32,7 @@
+         android:summary="@string/double_tap_power_for_camera_summary"
+         settings:animation="@raw/gesture_double_tap"
+         settings:preview="@drawable/gesture_double_tap"/>
+-
++        
+     <com.android.settings.gestures.GesturePreference
+         android:key="gesture_double_twist"
+         android:title="@string/double_twist_for_camera_mode_title"
+@@ -53,5 +53,12 @@
+         android:summary="@string/ambient_display_pickup_summary"
+         settings:animation="@raw/gesture_ambient_lift"
+         settings:preview="@drawable/gesture_ambient_lift"/>
++    
++    <com.android.settings.gestures.GesturePreference
++        android:key="gesture_double_tap_top_left_corner"
++        android:title="@string/double_tap_to_make_screenshot"
++        android:summary="@string/double_tap_to_make_screenshot_summary"
++        settings:animation="@raw/gesture_double_tap"
++        settings:preview="@drawable/gesture_double_tap"/>
+ 
+-</PreferenceScreen>
+\ No newline at end of file
++</PreferenceScreen>
+diff --git a/src/com/android/settings/gestures/GestureSettings.java b/src/com/android/settings/gestures/GestureSettings.java
+index c03c5e1178..d19b81dd4c 100644
+--- a/src/com/android/settings/gestures/GestureSettings.java
++++ b/src/com/android/settings/gestures/GestureSettings.java
+@@ -55,6 +55,7 @@ public class GestureSettings extends SettingsPreferenceFragment implements
+     private static final String PREF_KEY_PICK_UP = "gesture_pick_up";
+     private static final String PREF_KEY_SWIPE_DOWN_FINGERPRINT = "gesture_swipe_down_fingerprint";
+     private static final String PREF_KEY_DOUBLE_TAP_SCREEN = "gesture_double_tap_screen";
++    private static final String PREF_KEY_DOUBLE_TAP_TOP_LEFT_CORNER = "gesture_double_tap_top_left_corner";
+     private static final String DEBUG_DOZE_COMPONENT = "debug.doze.component";
+ 
+     private List<GesturePreference> mPreferences;
+@@ -107,7 +108,10 @@ public class GestureSettings extends SettingsPreferenceFragment implements
+         } else {
+             removePreference(PREF_KEY_DOUBLE_TWIST);
+         }
+-
++        
++        int screenshotEnabled = Secure.getInt(
++            getContentResolver(), Secure.SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP, 1);
++        addPreference(PREF_KEY_DOUBLE_TAP_TOP_LEFT_CORNER, screenshotEnabled != 0);
+     }
+ 
+     @Override
+@@ -169,6 +173,8 @@ public class GestureSettings extends SettingsPreferenceFragment implements
+         } else if (PREF_KEY_DOUBLE_TWIST.equals(key)) {
+             Secure.putInt(getContentResolver(),
+                     Secure.CAMERA_DOUBLE_TWIST_TO_FLIP_ENABLED, enabled ? 1 : 0);
++        } else if (PREF_KEY_DOUBLE_TAP_TOP_LEFT_CORNER.equals(key)) {
++            Secure.putInt(getContentResolver(), Secure.SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP, enabled ? 1 : 0);
+         }
+         return true;
+     }

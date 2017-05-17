@@ -1,0 +1,294 @@
+diff --git a/core/java/android/provider/Settings.java b/core/java/android/provider/Settings.java
+index 35a3c0c0d8c..de2c15b0194 100755
+--- a/core/java/android/provider/Settings.java
++++ b/core/java/android/provider/Settings.java
+@@ -6001,6 +6001,12 @@ public final class Settings {
+          * @hide
+          */
+         public static final String DOZE_PULSE_ON_PICK_UP = "doze_pulse_on_pick_up";
++        
++        /**
++         * Whether the device should make screenshot on top left corner double tap.
++         * @hide
++         */
++        public static final String SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP = "screenshot_on_top_left_corner_double_tap";
+ 
+         /**
+          * Whether the device should pulse on double tap gesture.
+@@ -6510,7 +6516,8 @@ public final class Settings {
+             DOZE_ENABLED,
+             DOZE_PULSE_ON_PICK_UP,
+             DOZE_PULSE_ON_DOUBLE_TAP,
+-            NFC_PAYMENT_DEFAULT_COMPONENT
++            NFC_PAYMENT_DEFAULT_COMPONENT,
++            SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP
+         };
+ 
+         /**
+diff --git a/core/java/android/view/MotionEvent.java b/core/java/android/view/MotionEvent.java
+index 3e72192e9b0..7ae1af2d3cd 100644
+--- a/core/java/android/view/MotionEvent.java
++++ b/core/java/android/view/MotionEvent.java
+@@ -1391,6 +1391,14 @@ public final class MotionEvent extends InputEvent implements Parcelable {
+      */
+     public static final int TOOL_TYPE_ERASER = 4;
+ 
++    /**
++     * Tool type constant: The tool is a finger. The tap was in the top-left corner.
++     *
++     * @see #getToolType
++     * @hide
++     */
++    public static final int TOOL_TYPE_FINGER_TOP_LEFT_CORNER = 5;
++
+     // NOTE: If you add a new tool type here you must also add it to:
+     //  native/include/android/input.h
+ 
+diff --git a/core/java/android/view/ViewRootImpl.java b/core/java/android/view/ViewRootImpl.java
+index f761b9b4ea1..23731d741dc 100644
+--- a/core/java/android/view/ViewRootImpl.java
++++ b/core/java/android/view/ViewRootImpl.java
+@@ -102,6 +102,7 @@ import java.lang.ref.WeakReference;
+ import java.util.ArrayList;
+ import java.util.HashSet;
+ import java.util.concurrent.CountDownLatch;
++import android.provider.Settings.Secure;
+ 
+ /**
+  * The top of a view hierarchy, implementing the needed protocol between View
+@@ -4429,13 +4430,22 @@ public final class ViewRootImpl implements ViewParent,
+ 
+         private int processPointerEvent(QueuedInputEvent q) {
+             final MotionEvent event = (MotionEvent)q.mEvent;
+-
++            boolean b = false;
++            int screenshotEnabled = Secure.getInt(mContext.getContentResolver(), Secure.SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP, 1);
++            if(screenshotEnabled != 0) {
++                for (int i = 0; i < event.getPointerCount(); i++) {
++                    int toolType = event.getToolType(i);
++                    if (toolType == MotionEvent.TOOL_TYPE_FINGER_TOP_LEFT_CORNER) {
++                        b = true;
++                    }
++                }
++            }
+             mAttachInfo.mUnbufferedDispatchRequested = false;
+             final View eventTarget =
+                     (event.isFromSource(InputDevice.SOURCE_MOUSE) && mCapturingView != null) ?
+                             mCapturingView : mView;
+             mAttachInfo.mHandlingPointerEvent = true;
+-            boolean handled = eventTarget.dispatchPointerEvent(event);
++            boolean handled = b ? true : eventTarget.dispatchPointerEvent(event);
+             maybeUpdatePointerIcon(event);
+             mAttachInfo.mHandlingPointerEvent = false;
+             if (mAttachInfo.mUnbufferedDispatchRequested && !mUnbufferedInputDispatch) {
+diff --git a/core/java/com/android/internal/widget/TopLeftCornerPointerEventListener.java b/core/java/com/android/internal/widget/TopLeftCornerPointerEventListener.java
+new file mode 100644
+index 00000000000..8ddbf4f0331
+--- /dev/null
++++ b/core/java/com/android/internal/widget/TopLeftCornerPointerEventListener.java
+@@ -0,0 +1,163 @@
++/*
++* Copyright (C) 2010 The Android Open Source Project
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*      http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*/
++
++package com.android.internal.widget;
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.content.ServiceConnection;
++import android.os.Handler;
++import android.os.IBinder;
++import android.os.Message;
++import android.os.Messenger;
++import android.os.RemoteException;
++import android.os.UserHandle;
++import android.view.GestureDetector;
++import android.view.MotionEvent;
++import android.view.WindowManagerPolicy.PointerEventListener;
++import android.os.Vibrator;
++import android.widget.Toast;
++import android.content.BroadcastReceiver;
++import android.content.IntentFilter;
++import android.app.KeyguardManager;
++import android.provider.Settings.Secure;
++import android.util.Log;
++public class TopLeftCornerPointerEventListener implements PointerEventListener {
++    private static final String TAG = TopLeftCornerPointerEventListener.class.getSimpleName();
++    private final Object mScreenshotLock = new Object();
++    private ServiceConnection mScreenshotServiceConnection = null;
++    private final Context mContext;
++    private final GestureDetector mDetector;
++    private final KeyguardManager mKeyguardManager;
++
++    public TopLeftCornerPointerEventListener(Context c) {
++        mContext = c;
++        mDetector = new GestureDetector(c, new CustomTapGestureListener());
++        mKeyguardManager = (KeyguardManager) mContext.getSystemService(Context.KEYGUARD_SERVICE);
++    }
++
++    @Override
++    public void onPointerEvent(MotionEvent event) {
++        if (mDetector.onTouchEvent(event)) {
++            return;
++        }
++    }
++
++    public void takeScreenshot() {
++        synchronized (mScreenshotLock) {
++            if (mScreenshotServiceConnection != null) {
++                return;
++            }
++            ComponentName compName = new ComponentName("com.android.systemui",
++                    "com.android.systemui.screenshot.TakeScreenshotService");
++            Intent intent = new Intent();
++            intent.setComponent(compName);
++            ServiceConnection localServiceConnection = new ServiceConnection() {
++                @Override
++                public void onServiceConnected(ComponentName name, IBinder service) {
++                    synchronized (mScreenshotLock) {
++                        if (mScreenshotServiceConnection != this) {
++                            return;
++                        }
++                        Messenger messenger = new Messenger(service);
++                        Message msg = Message.obtain(null, 1);
++                        final ServiceConnection serviceConnection  = this;
++                        Handler handler = new Handler() {
++                            @Override
++                            public void handleMessage(Message msg) {
++                                synchronized (mScreenshotLock) {
++                                    if (mScreenshotServiceConnection == serviceConnection) {
++                                        mContext.unbindService(mScreenshotServiceConnection);
++                                        mScreenshotServiceConnection = null;
++                                    }
++                                }
++                            }
++                        };
++                        msg.replyTo = new Messenger(handler);
++                        msg.arg1 = msg.arg2 = 0;
++
++                        try {
++                            messenger.send(msg);
++                        } catch (RemoteException e) {
++                            Log.w(TAG, e);
++                        }
++                    }
++                }
++
++                @Override
++                public void onServiceDisconnected(ComponentName name) {
++                }
++            };
++            if (mContext.bindServiceAsUser(intent, localServiceConnection, Context.BIND_AUTO_CREATE, UserHandle.CURRENT)) {
++                mScreenshotServiceConnection = localServiceConnection;
++            }
++        }
++    }
++
++    class CustomTapGestureListener extends GestureDetector.SimpleOnGestureListener {
++        private boolean mSingleTap = false;
++        
++        @Override
++        public boolean onDown(MotionEvent event) {
++            return true;
++        }
++
++        @Override
++        public boolean onSingleTapConfirmed(MotionEvent event) {
++            int screenshotEnabled = Secure.getInt(mContext.getContentResolver(), Secure.SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP, 1);
++            if(screenshotEnabled == 0) {
++                mSingleTap = false;
++                return true;
++            }
++            for (int i = 0; i < event.getPointerCount(); i++) {
++                int toolType = event.getToolType(i);
++                if (toolType == MotionEvent.TOOL_TYPE_FINGER_TOP_LEFT_CORNER) {
++                    if(mSingleTap) {
++                        mSingleTap = false;
++                        android.widget.Toast.makeText(mContext, "Please double tap faster to take the screenshot", Toast.LENGTH_SHORT).show();
++                    }
++                    else{
++                        mSingleTap = true;
++                    }
++                }
++                else {
++                    mSingleTap = false;
++                }
++
++            }
++            return true;
++        }
++        @Override
++        public boolean onDoubleTap(MotionEvent event) {
++            Vibrator v = (Vibrator) mContext.getSystemService(Context.VIBRATOR_SERVICE);
++            v.vibrate(500);
++            
++            int screenshotEnabled = Secure.getInt(mContext.getContentResolver(), Secure.SCREENSHOT_ON_TOP_LEFT_CORNER_DOUBLE_TAP, 1);
++            if(screenshotEnabled == 0) {
++                return true;
++            }
++            
++            for (int i = 0; i < event.getPointerCount(); i++) {
++                int toolType = event.getToolType(i);
++                if (toolType == MotionEvent.TOOL_TYPE_FINGER_TOP_LEFT_CORNER && !mKeyguardManager.inKeyguardRestrictedInputMode()) {
++                    
++                    takeScreenshot();
++                }
++            }
++            return true;
++        }
++    }
++}
+diff --git a/services/core/java/com/android/server/policy/PhoneWindowManager.java b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 889c52afa37..ae7ef33f3d6 100644
+--- a/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -147,6 +147,7 @@ import com.android.internal.policy.IShortcutService;
+ import com.android.internal.statusbar.IStatusBarService;
+ import com.android.internal.util.ScreenShapeHelper;
+ import com.android.internal.widget.PointerLocationView;
++import com.android.internal.widget.TopLeftCornerPointerEventListener;
+ import com.android.server.GestureLauncherService;
+ import com.android.server.LocalServices;
+ import com.android.server.policy.keyguard.KeyguardServiceDelegate;
+@@ -498,6 +499,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     IApplicationToken mFocusedApp;
+ 
+     PointerLocationView mPointerLocationView;
++    TopLeftCornerPointerEventListener mTopLeftCornerPointerEventListener;
+ 
+     // The current size of the screen; really; extends into the overscan area of
+     // the screen and doesn't account for any system elements like the status bar.
+@@ -2176,6 +2178,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         }
+     }
+ 
++    private void enableTopLeftCornerPointerEventListener() {
++        if (mTopLeftCornerPointerEventListener == null) {
++            mTopLeftCornerPointerEventListener = new TopLeftCornerPointerEventListener(mContext);
++            mWindowManagerFuncs.registerPointerEventListener(mTopLeftCornerPointerEventListener);
++        }
++    }
++
+     private int readRotation(int resID) {
+         try {
+             int rotation = mContext.getResources().getInteger(resID);
+@@ -7047,6 +7056,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         synchronized (mLock) {
+             updateOrientationListenerLp();
+             mSystemReady = true;
++            enableTopLeftCornerPointerEventListener();
+             mHandler.post(new Runnable() {
+                 @Override
+                 public void run() {

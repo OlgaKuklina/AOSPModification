@@ -1,0 +1,4 @@
+cc_library {
+    name: "classificationlib",
+    srcs: ["tlcclassifier.c"],
+}
