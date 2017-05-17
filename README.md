@@ -2,6 +2,8 @@
 
 Modified Android Framework to listen for special double-tap events and trigger a system screenshot. 
 
+Implemented solution supports switching the feature on/off in settings, vibration during the sucsessfull double tap, toast if taps are not in quick succession and feature idle when the device is locked or displays the lock/PIN screen.
+
 ![screenshot](https://cloud.githubusercontent.com/assets/6971421/26136337/3c6d2c78-3a70-11e7-963e-154a6821920b.jpg)
 
 ## Solution
