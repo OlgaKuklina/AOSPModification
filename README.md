@@ -1,5 +1,8 @@
 # AOSPModification
+
 Modified Android Framework to listen for special double-tap events and trigger a system screenshot. 
+
+![screenshot](https://cloud.githubusercontent.com/assets/6971421/26136337/3c6d2c78-3a70-11e7-963e-154a6821920b.jpg)
 
 ## Solution
 ### InputFlinger and Native classification library
